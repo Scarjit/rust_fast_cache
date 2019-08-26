@@ -3,10 +3,10 @@ use crate::tools::{get_nano_time, log_log, log_warn};
 use directories::ProjectDirs;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::io;
-use std::path::{Path};
+use std::path::Path;
 extern crate rand;
 use rand::Rng;
-use std::fs::{File};
+use std::fs::File;
 use std::io::Read;
 
 pub const ONE_BYTE: u64 = 1;
@@ -100,7 +100,8 @@ impl Cache {
         let c_strat = cleanse_strategy.unwrap_or(CleanseStrategy::Combined);
 
         if new_max_ram < self.max_ram_cache {
-            self.cleanup_mem_cache(&c_strat, new_max_ram).expect("Couldn't cleanup memory");
+            self.cleanup_mem_cache(&c_strat, new_max_ram)
+                .expect("Couldn't cleanup memory");
         }
 
         if new_max_disk < self.max_disk_cache {
@@ -112,13 +113,19 @@ impl Cache {
         log_warn("Resized cache, requests will be handled again !");
     }
 
-    fn cleanup_mem_cache(&mut self, cleanse_strategy: &CleanseStrategy, new_max_cache: u64) -> io::Result<()>{
+    fn cleanup_mem_cache(
+        &mut self,
+        cleanse_strategy: &CleanseStrategy,
+        new_max_cache: u64,
+    ) -> io::Result<()> {
         if self.memdb_size <= new_max_cache {
             return Ok(());
         }
 
-        let to_clean = self.memdb_size.checked_sub(new_max_cache).expect("New max_cache < memdb size");
-
+        let to_clean = self
+            .memdb_size
+            .checked_sub(new_max_cache)
+            .expect("New max_cache < memdb size");
 
         log_log("[CLEANING MEMDB]");
         log_log(&format!("\tMemory used: {:?}", &self.memdb_size));
@@ -126,15 +133,13 @@ impl Cache {
         log_log(&format!("\tCleaning up: {:?}", to_clean));
         log_log(&format!("\tStartegy: {:?}", cleanse_strategy));
 
-        self.memdb.cleanup(cleanse_strategy, to_clean, &self.cache_path.to_owned())?;
+        self.memdb
+            .cleanup(cleanse_strategy, to_clean, &self.cache_path.to_owned())?;
 
         Ok(())
-
     }
 
-    fn cleanup_disk_cache(&mut self, _cleanse_strategy: &CleanseStrategy, _new_max_disk: u64) {
-
-    }
+    fn cleanup_disk_cache(&mut self, _cleanse_strategy: &CleanseStrategy, _new_max_disk: u64) {}
 
     pub fn remove_cache_item(&mut self, key: &str) -> io::Result<Option<DatabaseItem>> {
         let dbi = self.memdb.get(key)?;
@@ -159,7 +164,6 @@ impl Cache {
         key: String,
         value: Vec<u8>,
     ) -> io::Result<Option<DatabaseItem>> {
-
         let mut rng = rand::thread_rng();
 
         self.remove_cache_item(&key.clone())?;
@@ -190,37 +194,32 @@ impl Cache {
         Ok(Some(fx))
     }
 
-    pub fn get_cache_value(&mut self, key: String) -> io::Result<Option<Vec<u8>>>{
+    pub fn get_cache_value(&mut self, key: String) -> io::Result<Option<Vec<u8>>> {
         let cache_item = self.get_cache_item(key)?;
         if cache_item.is_none() {
-             return Ok(None);
+            return Ok(None);
         }
 
         let fxi = cache_item.expect("Some is none");
         match fxi.value {
-            None => {
-                match fxi.filepath {
-                    None => {
-                         Ok(None)
-                    },
-                    Some(v) => {
-                        if Path::new(&v).exists() {
-                            let mut f = File::open(&v)?;
-                            let mut buff: Vec<u8> = vec![];
-                            f.read_to_end(&mut buff)?;
-                            log_log("From disk");
-                             Ok(Some(buff))
-                        }else {
-                             Ok(None)
-                        }
-                    },
+            None => match fxi.filepath {
+                None => Ok(None),
+                Some(v) => {
+                    if Path::new(&v).exists() {
+                        let mut f = File::open(&v)?;
+                        let mut buff: Vec<u8> = vec![];
+                        f.read_to_end(&mut buff)?;
+                        log_log("From disk");
+                        Ok(Some(buff))
+                    } else {
+                        Ok(None)
+                    }
                 }
             },
             Some(v) => {
                 log_log("From memory");
-                 Ok(Some(v))
-            },
+                Ok(Some(v))
+            }
         }
-
     }
 }

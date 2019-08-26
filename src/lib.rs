@@ -5,6 +5,7 @@
 #![allow(clippy::implicit_return)]
 #![allow(clippy::integer_arithmetic)]
 #![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_precision_loss)]
 
 pub mod cache_service;
 pub mod memdb;
