@@ -1,20 +1,19 @@
-use crate::tools::{get_nano_time, nano_time_fmt, log_log, log_debug, log_warn};
+use crate::cache_service::cache::CleanseStrategy;
+use crate::tools;
+use crate::tools::{fmt_bytes, get_nano_time, log_debug, log_log, log_warn, nano_time_fmt};
 use parking_lot::{lock_api, RwLock};
 use std::collections::HashMap;
 use std::fmt;
-use std::fmt::{Formatter};
+use std::fmt::Formatter;
+use std::fs::OpenOptions;
+use std::fs::{create_dir_all, remove_dir_all, File};
 use std::hash::BuildHasherDefault;
-use std::path::{PathBuf, Path};
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
 use twox_hash::XxHash64;
-use crate::cache_service::cache::CleanseStrategy;
-use crate::tools;
-use std::fs::{remove_dir_all, create_dir_all, File};
-use std::io::Write;
-use std::fs::OpenOptions;
-use std::os::unix::fs::OpenOptionsExt;
-
 
 #[derive(Clone)]
 pub struct DatabaseItem {
@@ -24,14 +23,10 @@ pub struct DatabaseItem {
     pub filepath: Option<PathBuf>,
 }
 impl DatabaseItem {
-    pub fn get_value_mem_size(&self) -> u64{
+    pub fn get_value_mem_size(&self) -> u64 {
         let val_len = match &self.value {
-            Some(v) => {
-                v.len()
-            }
-            _ => {
-                0
-            }
+            Some(v) => v.len(),
+            _ => 0,
         } as u64;
         let opt_vec = std::mem::size_of_val::<Option<Vec<u8>>>(&self.value) as u64;
         (std::mem::size_of::<u8>() as u64 * val_len) + opt_vec
@@ -77,7 +72,6 @@ impl DatabaseItem {
     }
 }
 
-
 impl Default for DatabaseItem {
     fn default() -> Self {
         Self {
@@ -105,7 +99,7 @@ impl fmt::Debug for DatabaseItem {
 pub struct MemoryDatabase {
     hashmap: Arc<RwLock<HashMap<String, DatabaseItem, BuildHasherDefault<XxHash64>>>>,
     locked_r: u64,
-    locked_w: u64
+    locked_w: u64,
 }
 
 impl Default for MemoryDatabase {
@@ -117,7 +111,7 @@ impl Default for MemoryDatabase {
                 BuildHasherDefault<XxHash64>,
             >::default())),
             locked_r: 0,
-            locked_w: 0
+            locked_w: 0,
         }
     }
 }
@@ -146,7 +140,12 @@ impl MemoryDatabase {
         Ok(hashmap.remove(key))
     }
 
-    pub fn cleanup(&mut self, cleanup_strategy: &CleanseStrategy, mut to_clean: u64, cache_path: &str) -> io::Result<()>{
+    pub fn cleanup(
+        &mut self,
+        cleanup_strategy: &CleanseStrategy,
+        mut to_clean: u64,
+        cache_path: &str,
+    ) -> io::Result<()> {
         let hashmap = Arc::<
             lock_api::RwLock<
                 parking_lot::RawRwLock,
@@ -159,63 +158,75 @@ impl MemoryDatabase {
 
         for (k, v) in hashmap.iter() {
             //println!("{:?}: {:?}", k, v);
-            keys.push((k.to_owned(), v.access_counter, v.last_access, v.get_mem_size(), v.get_disk_size()))
+            keys.push((
+                k.to_owned(),
+                v.access_counter,
+                v.last_access,
+                v.get_mem_size(),
+                v.get_disk_size(),
+            ))
         }
-
 
         match cleanup_strategy {
             CleanseStrategy::LastAccess => {
                 keys.sort_by(|a, b| a.2.cmp(&b.2));
-            },
+            }
             CleanseStrategy::LeastUsed => {
                 keys.sort_by(|a, b| a.1.cmp(&b.1));
-            },
+            }
             CleanseStrategy::Combined => {
-                keys.sort_by(|a, b|
-                    a.1.cmp(&b.1).then(a.2.cmp(&b.2))
-                );
-            },
+                keys.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.cmp(&b.2)));
+            }
         }
-
 
         let mut to_disk: Vec<String> = vec![];
 
         for k in keys {
-            if to_clean == 0{
-                break
+            if to_clean == 0 {
+                break;
             }
             log_log("");
-            log_log(&format!("\t\tLeft to clean:{:?}", to_clean));
-            log_log(&format!("\t\t{:?}: {:?} {:?} {:?} {:?}", &k.0, &k.1, tools::nano_time_fmt(k.2), &k.3, &k.4));
-
+            log_log(&format!("\t\tLeft to clean:{}", fmt_bytes(to_clean)));
+            log_log(&format!(
+                "\t\t{:?}: {:?} {:?} {:?} {:?}",
+                &k.0,
+                &k.1,
+                tools::nano_time_fmt(k.2),
+                &k.3,
+                &k.4
+            ));
 
             match &k.4 {
                 Ok(v) => {
-                    if v == &0{
+                    if v == &0 {
                         to_disk.push(k.0.clone());
-                        log_debug(&format!("\t\tMoving {:?} to disk will yield: {:?}", &k.0, &k.3));
+                        log_debug(&format!(
+                            "\t\tMoving {:?} to disk will yield: {}",
+                            &k.0,
+                            fmt_bytes(k.3)
+                        ));
                         if k.3 <= to_clean {
                             to_clean -= k.3;
-                        }else{
+                        } else {
                             to_clean = 0;
                         }
                     }
-                },
+                }
                 Err(v) => {
                     log_warn(&format!("\t\tSkipping {:?} ERROR: {:?}", k.0, v));
-                },
+                }
             }
         }
 
         log_debug(&format!("\tKeys to disk: {:?}", to_disk));
 
-        for k in to_disk{
+        for k in to_disk {
             let mut f = hashmap.get(&k).cloned().expect("Key went missing");
 
             let folder_path = format!("{}/{}", cache_path, k);
             f.filepath = Some(PathBuf::from(&folder_path));
 
-            if Path::new(&folder_path).exists(){
+            if Path::new(&folder_path).exists() {
                 remove_dir_all(&folder_path)?;
             }
 
@@ -224,13 +235,14 @@ impl MemoryDatabase {
             let file_path = format!("{}/cachefile", &folder_path);
 
             //Disable file caching for linux
-            let mut file: File = if cfg!(target_os = "linux"){
+            let mut file: File = if cfg!(target_os = "linux") {
                 OpenOptions::new()
                     .write(true)
                     .create(true)
                     .custom_flags(libc::O_DIRECT)
-                    .open(&file_path).expect("Could not open file")
-            }else{
+                    .open(&file_path)
+                    .expect("Could not open file")
+            } else {
                 File::create(&file_path)?
             };
 
@@ -243,9 +255,6 @@ impl MemoryDatabase {
             hashmap.insert(k, f);
         }
 
-
         Ok(())
-
     }
-
 }

@@ -1,15 +1,23 @@
 #[cfg(test)]
 mod tests {
-    use crate::cache_service::cache::{Cache, CleanseStrategy, ONE_GIBIBYTE, ONE_MEBIBYTE, ONE_BYTE};
+    use crate::cache_service::cache::{
+        Cache, CleanseStrategy, ONE_BYTE, ONE_GIBIBYTE, ONE_KIBIBYTE, ONE_MEBIBYTE,
+    };
     use crate::memdb::memory_database::{DatabaseItem, MemoryDatabase};
-    use crate::tools::{get_nano_time, log, log_debug};
+    use crate::tools::{fmt_bytes, get_nano_time, log, log_debug, log_error, log_log};
     use directories::ProjectDirs;
-    use serde::de::Unexpected::Str;
-    use std::time::{SystemTime, Instant};
-    use rand::Rng;
+    use number_prefix::NumberPrefix;
+    use number_prefix::NumberPrefix::{Prefixed, Standalone};
+    use rayon::prelude::*;
+    use std::time::{Instant, SystemTime};
+    use xorshift::{
+        Rand, Rng, RngJump, SeedableRng, SplitMix64, Xoroshiro128, Xorshift1024, Xorshift128,
+    };
 
     #[test]
     fn test_cache() {
+        log_log("Starting Cache Test");
+        let nowx = Instant::now();
         let mut cache_service: Cache = Cache::default();
         //println!("{:?}", cache_service);
 
@@ -22,33 +30,65 @@ mod tests {
         //println!("{:?}", cache_service);
         //println!("{:?}", cache_service.get_cache_item(String::from("TEST")));
 
-        let mut rng = rand::thread_rng();
+        log_log("Generating randomness");
+
+        let mut sm: SplitMix64 = SeedableRng::from_seed(0);
+        let mut rng: Xorshift1024 = Rand::rand(&mut sm);
+
+        let mut test_data_n: Vec<usize> = (0u8..25).map(usize::from).collect();
+
+        let fxw: Vec<Vec<u8>> = test_data_n
+            .par_iter()
+            .map(|p| {
+                let mut r = rng;
+                r.jump(*p);
+                //let max : u64 = r.gen_range(ONE_BYTE, ONE_MEBIBYTE * 50);
+                let max = ONE_MEBIBYTE * 10;
+
+                let pref_num = fmt_bytes(max);
+
+                log_log(&format!("{}/{} [{}]", p, 25, pref_num));
+
+                let mut numbers: Vec<u8> = vec![];
+                for _ in 0..max {
+                    numbers.push(r.gen_range(0, 255));
+                }
+                numbers
+            })
+            .collect();
+
         for i in 0..25 {
-            let mut numbers: Vec<u8> = vec![];
-            for _ in 0..rng.gen_range(ONE_BYTE, ONE_MEBIBYTE) {
-                numbers.push(rng.gen_range(0, 255));
-            }
-
-            cache_service.insert_cache_item(String::from(format!("TEST_{}", i)), numbers);
+            cache_service.insert_cache_item(
+                String::from(format!("TEST_{}", i)),
+                fxw.get(i).unwrap().to_owned(),
+            );
         }
-
-
         //Cache lookup test
         let now = Instant::now();
-        let t10 = cache_service.get_cache_value(String::from("TEST_1")).expect("Err");
+        let t10 = cache_service
+            .get_cache_value(String::from("TEST_1"))
+            .expect("Err");
         log_debug(&format!("Len {:?}", t10.unwrap().len()));
-        log_debug(&format!("Nanos {:?}", now.elapsed()));
+        let mem_elapsed = now.elapsed();
+        log_debug(&format!("Elapsed {:?}", mem_elapsed));
 
         //println!("{:?}", cache_service);
         cache_service.resize_cache(Some(0), None, None);
         //println!("{:?}", cache_service);
 
         let now = Instant::now();
-        let t10 = cache_service.get_cache_value(String::from("TEST_1")).expect("Err");
+        let t10 = cache_service
+            .get_cache_value(String::from("TEST_1"))
+            .expect("Err");
         log_debug(&format!("Len {:?}", t10.unwrap().len()));
-        log_debug(&format!("Nanos {:?}", now.elapsed()));
+        let disk_elapsed = now.elapsed();
+        log_debug(&format!("Elapsed: {:?}", disk_elapsed));
+        log_debug(&format!(
+            "Factor: {:?}",
+            disk_elapsed.as_nanos() as f64 / mem_elapsed.as_nanos() as f64
+        ));
 
-
+        log_error(&format!("Finished cache testing in {:?}", nowx.elapsed()));
     }
 
     #[test]
