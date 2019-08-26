@@ -33,18 +33,10 @@ impl DatabaseItem {
     }
 
     pub fn get_mem_size(&self) -> u64 {
-        let size_of_optvec8 = self.get_value_mem_size();
-        let size_of_u64 = std::mem::size_of::<u64>() as u64;
-        let size_of_systemtime = std::mem::size_of::<u128>() as u64;
-        let size_of_optpathbuf = std::mem::size_of_val::<Option<PathBuf>>(&self.filepath) as u64;
-        let f1: u64 = size_of_optvec8
-            .checked_add(size_of_u64)
-            .expect("Couldn't get memory size");
-        let f2: u64 = size_of_systemtime
-            .checked_add(size_of_optpathbuf)
-            .expect("Couldn't get memory size");
-
-        f1.checked_add(f2).expect("Couldn't get memory size")
+        self.get_value_mem_size()
+            + std::mem::size_of::<u64>() as u64
+            + std::mem::size_of::<u128>() as u64
+            + std::mem::size_of_val::<Option<PathBuf>>(&self.filepath) as u64
     }
     pub fn get_disk_size(&self) -> io::Result<u64> {
         match &self.filepath {
