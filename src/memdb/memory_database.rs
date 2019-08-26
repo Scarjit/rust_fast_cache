@@ -90,8 +90,6 @@ impl fmt::Debug for DatabaseItem {
 #[derive(Debug, Clone)]
 pub struct MemoryDatabase {
     hashmap: Arc<RwLock<HashMap<String, DatabaseItem, BuildHasherDefault<XxHash64>>>>,
-    locked_r: u64,
-    locked_w: u64,
 }
 
 impl Default for MemoryDatabase {
@@ -102,8 +100,6 @@ impl Default for MemoryDatabase {
                 DatabaseItem,
                 BuildHasherDefault<XxHash64>,
             >::default())),
-            locked_r: 0,
-            locked_w: 0,
         }
     }
 }
