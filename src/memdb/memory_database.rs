@@ -88,11 +88,11 @@ impl fmt::Debug for DatabaseItem {
 }
 
 #[derive(Debug, Clone)]
-pub struct MemoryDatabase {
+pub struct FastDB {
     hashmap: Arc<RwLock<HashMap<String, DatabaseItem, BuildHasherDefault<XxHash64>>>>,
 }
 
-impl Default for MemoryDatabase {
+impl Default for FastDB {
     fn default() -> Self {
         Self {
             hashmap: Arc::new(RwLock::new(HashMap::<
@@ -104,7 +104,7 @@ impl Default for MemoryDatabase {
     }
 }
 
-impl MemoryDatabase {
+impl FastDB {
     pub fn set(&mut self, key: String, value: DatabaseItem) -> io::Result<Option<DatabaseItem>> {
         let hashmap = Arc::<
             lock_api::RwLock<
@@ -128,7 +128,7 @@ impl MemoryDatabase {
         Ok(hashmap.remove(key))
     }
 
-    pub fn cleanup(
+    pub fn cleanup_disk(
         &mut self,
         cleanup_strategy: &CleanseStrategy,
         mut to_clean: u64,
@@ -140,12 +140,67 @@ impl MemoryDatabase {
                 HashMap<std::string::String, DatabaseItem, BuildHasherDefault<XxHash64>>,
             >,
         >::clone(&self.hashmap);
+
         let mut hashmap = hashmap.write();
 
+        let keys = self.get_keys(&hashmap, cleanup_strategy);
+
+        logger::warn(&format!("{} {} {:?}", to_clean, cache_path, keys));
+
+        let mut to_remove: Vec<String> = vec![];
+
+        for k in keys {
+            if to_clean == 0 {
+                break;
+            }
+
+            match &k.4 {
+                Ok(v) => {
+                    to_remove.push(k.0.clone());
+
+                    if to_clean >= *v {
+                        to_clean -= *v;
+                    } else {
+                        to_clean = 0;
+                    }
+                }
+                Err(v) => {
+                    logger::error(&format!("\t\tSkipping {:?} ERROR: {:?}", k.0, v));
+                }
+            }
+        }
+
+        for k in &to_remove {
+            let folder_path = format!("{}/{}", cache_path, k);
+
+            if Path::new(&folder_path).exists() {
+                remove_dir_all(&folder_path)?;
+            }
+
+            hashmap.remove(k);
+        }
+
+        logger::debug(&format!("\tKeys to remove: {:?}", &to_remove));
+
+        Ok(())
+    }
+
+    fn get_keys(
+        &mut self,
+        hashmap: &lock_api::RwLockWriteGuard<
+            '_,
+            parking_lot::RawRwLock,
+            std::collections::HashMap<
+                std::string::String,
+                DatabaseItem,
+                std::hash::BuildHasherDefault<twox_hash::XxHash64>,
+            >,
+        >,
+        cleanup_strategy: &CleanseStrategy,
+    ) -> Vec<(String, u64, u128, u64, io::Result<u64>)> {
         let mut keys: Vec<(String, u64, u128, u64, io::Result<u64>)> = vec![];
 
         for (k, v) in hashmap.iter() {
-            //println!("{:?}: {:?}", k, v);
             keys.push((
                 k.to_owned(),
                 v.access_counter,
@@ -166,6 +221,24 @@ impl MemoryDatabase {
                 keys.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.cmp(&b.2)));
             }
         }
+        keys
+    }
+
+    pub fn cleanup_mem(
+        &mut self,
+        cleanup_strategy: &CleanseStrategy,
+        mut to_clean: u64,
+        cache_path: &str,
+    ) -> io::Result<u64> {
+        let hashmap = Arc::<
+            lock_api::RwLock<
+                parking_lot::RawRwLock,
+                HashMap<std::string::String, DatabaseItem, BuildHasherDefault<XxHash64>>,
+            >,
+        >::clone(&self.hashmap);
+        let mut hashmap = hashmap.write();
+
+        let keys = self.get_keys(&hashmap, cleanup_strategy);
 
         let mut to_disk: Vec<String> = vec![];
 
@@ -208,6 +281,8 @@ impl MemoryDatabase {
 
         logger::debug(&format!("\tKeys to disk: {:?}", to_disk));
 
+        let mut ds: u64 = 0;
+
         for k in to_disk {
             let mut f = hashmap.get(&k).cloned().expect("Key went missing");
 
@@ -240,9 +315,11 @@ impl MemoryDatabase {
             f.filepath = Some(PathBuf::from(&file_path));
             f.value = None;
 
+            ds += f.get_disk_size()?;
+
             hashmap.insert(k, f);
         }
 
-        Ok(())
+        Ok(ds)
     }
 }
