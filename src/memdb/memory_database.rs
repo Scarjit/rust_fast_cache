@@ -1,8 +1,6 @@
 use crate::cache_service::cache::CleanseStrategy;
 use crate::tools;
-use crate::tools::{
-    fmt_bytes, get_nano_time, log_debug, log_error, log_log, log_warn, nano_time_fmt,
-};
+use crate::tools::{fmt_bytes, get_nano_time, logger, nano_time_fmt};
 use parking_lot::{lock_api, RwLock};
 use std::collections::HashMap;
 use std::fmt;
@@ -187,9 +185,9 @@ impl MemoryDatabase {
             if to_clean == 0 {
                 break;
             }
-            log_log("");
-            log_log(&format!("\t\tLeft to clean:{}", fmt_bytes(to_clean)));
-            log_log(&format!(
+            logger::log("");
+            logger::log(&format!("\t\tLeft to clean:{}", fmt_bytes(to_clean)));
+            logger::log(&format!(
                 "\t\t{:?}: {:?} {:?} {:?} {:?}",
                 &k.0,
                 &k.1,
@@ -202,7 +200,7 @@ impl MemoryDatabase {
                 Ok(v) => {
                     if v == &0 {
                         to_disk.push(k.0.clone());
-                        log_debug(&format!(
+                        logger::debug(&format!(
                             "\t\tMoving {:?} to disk will yield: {}",
                             &k.0,
                             fmt_bytes(k.3)
@@ -215,12 +213,12 @@ impl MemoryDatabase {
                     }
                 }
                 Err(v) => {
-                    log_error(&format!("\t\tSkipping {:?} ERROR: {:?}", k.0, v));
+                    logger::error(&format!("\t\tSkipping {:?} ERROR: {:?}", k.0, v));
                 }
             }
         }
 
-        log_debug(&format!("\tKeys to disk: {:?}", to_disk));
+        logger::debug(&format!("\tKeys to disk: {:?}", to_disk));
 
         for k in to_disk {
             let mut f = hashmap.get(&k).cloned().expect("Key went missing");
