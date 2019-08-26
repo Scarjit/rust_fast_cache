@@ -1,8 +1,6 @@
 extern crate chrono;
-use crate::tools::Severity::{DEBUG, ERROR, LOG, WARN};
 use chrono::prelude::DateTime;
 use chrono::Utc;
-use colored::*;
 use number_prefix::NumberPrefix;
 use number_prefix::NumberPrefix::{Prefixed, Standalone};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -28,31 +26,35 @@ pub fn fmt_bytes(b: u64) -> String {
     }
 }
 
-pub enum Severity {
-    DEBUG,
-    LOG,
-    WARN,
-    ERROR,
-}
+pub mod logger {
+    use colored::Colorize;
 
-pub fn log(log_obj: &str, severity: &Severity) {
-    match severity {
-        Severity::DEBUG => println!("{} {}", "[-]".green(), log_obj),
-        Severity::LOG => println!("{} {}", "[+]".white(), log_obj),
-        Severity::WARN => println!("{} {}", "[*]".yellow().bold(), log_obj),
-        Severity::ERROR => println!("{} {}", "[!]".red().bold(), log_obj),
+    pub enum Severity {
+        DEBUG,
+        LOG,
+        WARN,
+        ERROR,
     }
-}
 
-pub fn log_debug(log_obj: &str) {
-    log(log_obj, &DEBUG);
-}
-pub fn log_log(log_obj: &str) {
-    log(log_obj, &LOG);
-}
-pub fn log_warn(log_obj: &str) {
-    log(log_obj, &WARN);
-}
-pub fn log_error(log_obj: &str) {
-    log(log_obj, &ERROR);
+    fn l(log_obj: &str, severity: &Severity) {
+        match severity {
+            Severity::DEBUG => println!("{} {}", "[-]".green(), log_obj),
+            Severity::LOG => println!("{} {}", "[+]".white(), log_obj),
+            Severity::WARN => println!("{} {}", "[*]".yellow().bold(), log_obj),
+            Severity::ERROR => println!("{} {}", "[!]".red().bold(), log_obj),
+        }
+    }
+
+    pub fn debug(log_obj: &str) {
+        l(log_obj, &Severity::DEBUG);
+    }
+    pub fn log(log_obj: &str) {
+        l(log_obj, &Severity::LOG);
+    }
+    pub fn warn(log_obj: &str) {
+        l(log_obj, &Severity::WARN);
+    }
+    pub fn error(log_obj: &str) {
+        l(log_obj, &Severity::ERROR);
+    }
 }

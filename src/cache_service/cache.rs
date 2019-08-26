@@ -1,10 +1,11 @@
 use crate::memdb::memory_database::{DatabaseItem, MemoryDatabase};
-use crate::tools::{get_nano_time, log_log, log_warn};
+use crate::tools::get_nano_time;
 use directories::ProjectDirs;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::io;
 use std::path::Path;
 extern crate rand;
+use crate::tools::logger;
 use rand::Rng;
 use std::fs::File;
 use std::io::Read;
@@ -78,7 +79,7 @@ impl Cache {
     /// WARNING: Old path will not be cleared !
     pub fn set_cache_path(&mut self, new_cache_path: String) {
         if !Path::new(&new_cache_path).exists() {
-            log_log("Cache path does not exist, creating!");
+            logger::log("Cache path does not exist, creating!");
             std::fs::create_dir_all(&new_cache_path).expect("Could not create cache path");
         }
         self.cache_path = new_cache_path;
@@ -94,7 +95,7 @@ impl Cache {
         max_disk_cache: Option<u64>,
         cleanse_strategy: Option<CleanseStrategy>,
     ) {
-        log_warn("Resizing cache, no requests will be handled !");
+        logger::warn("Resizing cache, no requests will be handled !");
         let new_max_ram = max_ram_cache.unwrap_or(ONE_GIBIBYTE);
         let new_max_disk = max_disk_cache.unwrap_or(TEN_GIBIBYTE);
         let c_strat = cleanse_strategy.unwrap_or(CleanseStrategy::Combined);
@@ -110,7 +111,7 @@ impl Cache {
 
         self.max_ram_cache = new_max_ram;
         self.max_disk_cache = new_max_disk;
-        log_warn("Resized cache, requests will be handled again !");
+        logger::warn("Resized cache, requests will be handled again !");
     }
 
     fn cleanup_mem_cache(
@@ -127,11 +128,11 @@ impl Cache {
             .checked_sub(new_max_cache)
             .expect("New max_cache < memdb size");
 
-        log_log("[CLEANING MEMDB]");
-        log_log(&format!("\tMemory used: {:?}", &self.memdb_size));
-        log_log(&format!("\tMemory max: {:?}", new_max_cache));
-        log_log(&format!("\tCleaning up: {:?}", to_clean));
-        log_log(&format!("\tStartegy: {:?}", cleanse_strategy));
+        logger::log("[CLEANING MEMDB]");
+        logger::log(&format!("\tMemory used: {:?}", &self.memdb_size));
+        logger::log(&format!("\tMemory max: {:?}", new_max_cache));
+        logger::log(&format!("\tCleaning up: {:?}", to_clean));
+        logger::log(&format!("\tStartegy: {:?}", cleanse_strategy));
 
         self.memdb
             .cleanup(cleanse_strategy, to_clean, &self.cache_path.to_owned())?;
@@ -209,7 +210,7 @@ impl Cache {
                         let mut f = File::open(&v)?;
                         let mut buff: Vec<u8> = vec![];
                         f.read_to_end(&mut buff)?;
-                        log_log("From disk");
+                        logger::log("From disk");
                         Ok(Some(buff))
                     } else {
                         Ok(None)
@@ -217,7 +218,7 @@ impl Cache {
                 }
             },
             Some(v) => {
-                log_log("From memory");
+                logger::log("From memory");
                 Ok(Some(v))
             }
         }

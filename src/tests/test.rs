@@ -37,7 +37,8 @@ mod tests {
             .map(|p| {
                 let mut r = rng;
                 r.jump(*p);
-                let max = ONE_MEBIBYTE * 10;
+                //let max = ONE_MEBIBYTE * 10;
+                let max = ONE_KIBIBYTE * 10;
 
                 let pref_num = fmt_bytes(max);
 
