@@ -1,6 +1,8 @@
 use crate::cache_service::cache::CleanseStrategy;
 use crate::tools;
-use crate::tools::{fmt_bytes, get_nano_time, log_debug, log_log, log_warn, nano_time_fmt};
+use crate::tools::{
+    fmt_bytes, get_nano_time, log_debug, log_error, log_log, log_warn, nano_time_fmt,
+};
 use parking_lot::{lock_api, RwLock};
 use std::collections::HashMap;
 use std::fmt;
@@ -213,7 +215,7 @@ impl MemoryDatabase {
                     }
                 }
                 Err(v) => {
-                    log_warn(&format!("\t\tSkipping {:?} ERROR: {:?}", k.0, v));
+                    log_error(&format!("\t\tSkipping {:?} ERROR: {:?}", k.0, v));
                 }
             }
         }

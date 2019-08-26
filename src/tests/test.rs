@@ -19,16 +19,11 @@ mod tests {
         log_log("Starting Cache Test");
         let nowx = Instant::now();
         let mut cache_service: Cache = Cache::default();
-        //println!("{:?}", cache_service);
 
         cache_service.insert_cache_item(String::from("TEST"), vec![0, 1, 2]);
-        //println!("{:?}", cache_service);
         cache_service.insert_cache_item(String::from("TEST"), (0..255).map(u8::from).collect());
-        //println!("{:?}", cache_service.get_cache_item(String::from("TEST")));
-        //println!("{:?}", cache_service);
+
         cache_service.remove_cache_item("TEST");
-        //println!("{:?}", cache_service);
-        //println!("{:?}", cache_service.get_cache_item(String::from("TEST")));
 
         log_log("Generating randomness");
 
@@ -42,7 +37,6 @@ mod tests {
             .map(|p| {
                 let mut r = rng;
                 r.jump(*p);
-                //let max : u64 = r.gen_range(ONE_BYTE, ONE_MEBIBYTE * 50);
                 let max = ONE_MEBIBYTE * 10;
 
                 let pref_num = fmt_bytes(max);
@@ -72,9 +66,7 @@ mod tests {
         let mem_elapsed = now.elapsed();
         log_debug(&format!("Elapsed {:?}", mem_elapsed));
 
-        //println!("{:?}", cache_service);
         cache_service.resize_cache(Some(0), None, None);
-        //println!("{:?}", cache_service);
 
         let now = Instant::now();
         let t10 = cache_service
@@ -121,7 +113,7 @@ mod tests {
         let max_i_1024: u64 = 1024;
         for i in 0..max_i_1024 {
             memdb.set(
-                format!("{:?}", i + max_i_1024),
+                format!("{:", i + max_i_1024),
                 DatabaseItem {
                     value: Some((0..255).map(u8::from).collect()),
                     last_access: get_nano_time(),
@@ -137,7 +129,7 @@ mod tests {
         let max_i_4096: u64 = 4096;
         for i in 0..max_i_4096 {
             memdb.set(
-                format!("{:?}", i + max_i_4096),
+                format!("{}", i + max_i_4096),
                 DatabaseItem {
                     value: Some((0..255).map(u8::from).collect()),
                     last_access: get_nano_time(),
@@ -153,7 +145,7 @@ mod tests {
         let max_i_16384: u64 = 16384;
         for i in 0..max_i_16384 {
             memdb.set(
-                format!("{:?}", i + max_i_16384),
+                format!("{}", i + max_i_16384),
                 DatabaseItem {
                     value: Some((0..255).map(u8::from).collect()),
                     last_access: get_nano_time(),
@@ -164,23 +156,23 @@ mod tests {
         }
         let elapsed_16384 = now.elapsed().unwrap();
 
-        println!(
+        log_log(&format!(
             "{:?}:\t{:?} ({:?} ns/insert)",
             max_i_1024,
             elapsed_1024,
             elapsed_1024.as_nanos() as f64 / max_i_1024 as f64
-        );
-        println!(
+        ));
+        log_log(&format!(
             "{:?}:\t{:?} ({:?} ns/insert)",
             max_i_4096,
             elapsed_4096,
             elapsed_4096.as_nanos() as f64 / max_i_4096 as f64
-        );
-        println!(
+        ));
+        log_log(&format!(
             "{:?}:\t{:?} ({:?} ns/insert)",
             max_i_16384,
             elapsed_16384,
             elapsed_16384.as_nanos() as f64 / max_i_16384 as f64
-        );
+        ));
     }
 }
