@@ -1,4 +1,4 @@
-use crate::memdb::memory_database::{DatabaseItem, MemoryDatabase};
+use crate::memdb::memory_database::{DatabaseItem, FastDB};
 use crate::tools::get_nano_time;
 use directories::ProjectDirs;
 use rayon::{ThreadPool, ThreadPoolBuilder};
@@ -43,7 +43,7 @@ pub struct Cache {
     max_disk_cache: u64,
     decache_age: u64,
     cache_path: String,
-    memdb: MemoryDatabase,
+    database: FastDB,
     memdb_size: u64,
     diskdb_size: u64,
     management_threadpool: ThreadPool,
@@ -63,7 +63,7 @@ impl Default for Cache {
                     .to_str()
                     .expect("Couldn't get default cache path"),
             ),
-            memdb: MemoryDatabase::default(),
+            database: FastDB::default(),
             memdb_size: 0,
             diskdb_size: 0,
             management_threadpool: ThreadPoolBuilder::new()
@@ -106,7 +106,8 @@ impl Cache {
         }
 
         if new_max_disk < self.max_disk_cache {
-            self.cleanup_disk_cache(&c_strat, new_max_disk);
+            self.cleanup_disk_cache(&c_strat, new_max_disk)
+                .expect("Couldn't cleanup disk");
         }
 
         self.max_ram_cache = new_max_ram;
@@ -134,20 +135,47 @@ impl Cache {
         logger::log(&format!("\tCleaning up: {:?}", to_clean));
         logger::log(&format!("\tStartegy: {:?}", cleanse_strategy));
 
-        self.memdb
-            .cleanup(cleanse_strategy, to_clean, &self.cache_path.to_owned())?;
+        let disk_size =
+            self.database
+                .cleanup_mem(cleanse_strategy, to_clean, &self.cache_path.to_owned())?;
+
+        self.diskdb_size += disk_size;
 
         Ok(())
     }
 
-    fn cleanup_disk_cache(&mut self, _cleanse_strategy: &CleanseStrategy, _new_max_disk: u64) {}
+    fn cleanup_disk_cache(
+        &mut self,
+        cleanse_strategy: &CleanseStrategy,
+        new_max_disk: u64,
+    ) -> io::Result<()> {
+        if self.diskdb_size <= new_max_disk {
+            return Ok(());
+        }
+
+        let to_clean = self
+            .diskdb_size
+            .checked_sub(new_max_disk)
+            .expect("New max_cache < memdb size");
+
+        logger::log("[CLEANING DISKDB]");
+        logger::log(&format!("\tDisk used: {:?}", &self.diskdb_size));
+        logger::log(&format!("\tDisk max: {:?}", new_max_disk));
+        logger::log(&format!("\tCleaning up: {:?}", to_clean));
+        logger::log(&format!("\tStartegy: {:?}", cleanse_strategy));
+
+        self.database
+            .cleanup_disk(cleanse_strategy, to_clean, &self.cache_path.to_owned())?;
+
+        Ok(())
+    }
 
     pub fn remove_cache_item(&mut self, key: &str) -> io::Result<Option<DatabaseItem>> {
-        let dbi = self.memdb.get(key)?;
+        let dbi = self.database.get(key)?;
         match dbi {
             Some(v) => {
                 let size = v.get_mem_size();
-                self.memdb.del(key)?;
+                self.database.del(key)?;
                 self.memdb_size -= size;
 
                 if v.filepath.is_some() {
@@ -177,11 +205,11 @@ impl Cache {
             filepath: None,
         };
         self.memdb_size += dbi.get_mem_size();
-        Ok(self.memdb.set(key, dbi)?)
+        Ok(self.database.set(key, dbi)?)
     }
 
     pub fn get_cache_item(&mut self, key: String) -> io::Result<Option<DatabaseItem>> {
-        let f = self.memdb.get(&key)?;
+        let f = self.database.get(&key)?;
         if f.is_none() {
             return Ok(None);
         }
@@ -190,7 +218,7 @@ impl Cache {
         fx.last_access = get_nano_time();
         fx.access_counter += 1;
 
-        self.memdb.set(key, fx.clone())?;
+        self.database.set(key, fx.clone())?;
 
         Ok(Some(fx))
     }
