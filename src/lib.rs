@@ -6,8 +6,8 @@
 #![allow(clippy::integer_arithmetic)]
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_precision_loss)]
+#![forbid(unsafe_code)]
 
 pub mod cache_service;
 pub mod memdb;
-mod tests;
 pub mod tools;

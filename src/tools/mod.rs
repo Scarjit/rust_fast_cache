@@ -5,6 +5,14 @@ use number_prefix::NumberPrefix;
 use number_prefix::NumberPrefix::{Prefixed, Standalone};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::OpenOptionsExt;
+#[cfg(target_os = "linux")]
+use std::fs::{OpenOptions};
+
+use std::fs::{File};
+use std::io;
+
 pub fn get_nano_time() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -24,6 +32,20 @@ pub fn fmt_bytes(b: u64) -> String {
         Standalone(bytes) => format!("{} bytes", bytes),
         Prefixed(prefix, n) => format!("{:.0} {}B", n, prefix),
     }
+}
+
+#[cfg(target_os = "linux")]
+pub fn get_non_buffered_file_handle(file_path: &str) -> io::Result<File>{
+     OpenOptions::new()
+            .write(true)
+            .create(true)
+            .custom_flags(libc::O_DIRECT)
+            .open(&file_path)
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_non_buffered_file_handle(file_path: &str) -> io::Result<File>{
+    File::create(&file_path)
 }
 
 pub mod logger {
