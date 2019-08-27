@@ -1,19 +1,19 @@
 use crate::cache_service::cache::CleanseStrategy;
 use crate::tools;
-use crate::tools::{fmt_bytes, get_nano_time, logger, nano_time_fmt};
+use crate::tools::{fmt_bytes, get_nano_time, logger, nano_time_fmt, get_non_buffered_file_handle};
 use parking_lot::{lock_api, RwLock};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
-use std::fs::OpenOptions;
-use std::fs::{create_dir_all, remove_dir_all, File};
+use std::fs::{create_dir_all, remove_dir_all};
 use std::hash::BuildHasherDefault;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
 use twox_hash::XxHash64;
+
+
 
 #[derive(Clone)]
 pub struct DatabaseItem {
@@ -180,7 +180,7 @@ impl FastDB {
             hashmap.remove(k);
         }
 
-        logger::debug(&format!("\tKeys to remove: {:?}", &to_remove));
+        logger::debug(&format!("\tKeys to remove ({:?}): {:?}", &to_remove.len() , &to_remove));
 
         Ok(())
     }
@@ -279,7 +279,7 @@ impl FastDB {
             }
         }
 
-        logger::debug(&format!("\tKeys to disk: {:?}", to_disk));
+        logger::debug(&format!("\tKeys to disk ({:?}): {:?}", &to_disk.len() , &to_disk));
 
         let mut ds: u64 = 0;
 
@@ -297,17 +297,7 @@ impl FastDB {
 
             let file_path = format!("{}/cachefile", &folder_path);
 
-            //Disable file caching for linux
-            let mut file: File = if cfg!(target_os = "linux") {
-                OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .custom_flags(libc::O_DIRECT)
-                    .open(&file_path)
-                    .expect("Could not open file")
-            } else {
-                File::create(&file_path)?
-            };
+            let mut file = get_non_buffered_file_handle(&file_path)?;
 
             let value = &f.value.expect("f has no value !");
             file.write_all(value)?;

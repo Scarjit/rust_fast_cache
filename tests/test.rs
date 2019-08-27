@@ -1,12 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::cache_service::cache::{
-        Cache, CleanseStrategy, ONE_BYTE, ONE_GIBIBYTE, ONE_KIBIBYTE, ONE_MEBIBYTE,
-    };
-    use crate::memdb::memory_database::{DatabaseItem, FastDB};
-    use crate::tools::{
-        fmt_bytes, get_nano_time, logger, logger::debug, logger::error, logger::log,
-    };
+
     use directories::ProjectDirs;
     use number_prefix::NumberPrefix;
     use number_prefix::NumberPrefix::{Prefixed, Standalone};
@@ -15,6 +9,9 @@ mod tests {
     use xorshift::{
         Rand, Rng, RngJump, SeedableRng, SplitMix64, Xoroshiro128, Xorshift1024, Xorshift128,
     };
+    use rust_fast_cache::tools::{logger, fmt_bytes, get_nano_time};
+    use rust_fast_cache::cache_service::cache::{Cache, ONE_MEBIBYTE};
+    use rust_fast_cache::memdb::memory_database::{FastDB, DatabaseItem};
 
     #[test]
     fn test_cache() {
@@ -34,20 +31,22 @@ mod tests {
 
         let mut test_data_n: Vec<usize> = (0u8..25).map(usize::from).collect();
 
+        let max = ONE_MEBIBYTE * 10;
+        let min = ONE_MEBIBYTE;
+
         let fxw: Vec<Vec<u8>> = test_data_n
             .par_iter()
             .map(|p| {
                 let mut r = rng;
                 r.jump(*p);
-                //let max = ONE_MEBIBYTE * 10;
-                let max = ONE_KIBIBYTE * 10;
 
-                let pref_num = fmt_bytes(max);
+                let f = r.gen_range(min, max);
+                let pref_num = fmt_bytes(f);
 
                 logger::log(&format!("{}/{} [{}]", p, 25, pref_num));
 
                 let mut numbers: Vec<u8> = vec![];
-                for _ in 0..max {
+                for _ in 0..f {
                     numbers.push(r.gen_range(0, 255));
                 }
                 numbers
@@ -69,7 +68,7 @@ mod tests {
         let mem_elapsed = now.elapsed();
         logger::debug(&format!("Elapsed {:?}", mem_elapsed));
 
-        cache_service.resize_cache(Some(0), None, None);
+        cache_service.resize_cache(Some(ONE_MEBIBYTE), None, None);
 
         let now = Instant::now();
         let t10 = cache_service
@@ -83,7 +82,7 @@ mod tests {
             disk_elapsed.as_nanos() as f64 / mem_elapsed.as_nanos() as f64
         ));
 
-        cache_service.resize_cache(Some(0), Some(0), None);
+        cache_service.resize_cache(Some(ONE_MEBIBYTE), Some(ONE_MEBIBYTE * 50), None);
         logger::log(&format!("{:?}", cache_service));
 
         logger::error(&format!("Finished cache testing in {:?}", nowx.elapsed()));
